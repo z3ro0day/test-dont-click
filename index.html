@@ -3,173 +3,181 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Snap & Upload</title>
+<title>Snap & Send</title>
+
 <style>
-  body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #1f1c2c, #928dab);
-    color: #fff;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    min-height: 100vh;
-    padding: 20px;
-  }
+body {
+  font-family: system-ui, sans-serif;
+  background: linear-gradient(135deg, #141e30, #243b55);
+  color: white;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
 
-  h1 {
-    margin-bottom: 20px;
-    font-size: 2rem;
-    text-shadow: 1px 1px 4px #000;
-  }
+.container {
+  background: rgba(0,0,0,0.4);
+  padding: 20px;
+  border-radius: 16px;
+  text-align: center;
+  width: 340px;
+}
 
-  video, canvas {
-    border: 3px solid #fff;
-    border-radius: 15px;
-    margin-bottom: 15px;
-    max-width: 100%;
-  }
+h1 {
+  margin-bottom: 15px;
+}
 
-  .buttons {
-    display: flex;
-    gap: 15px;
-    margin-bottom: 15px;
-  }
+video, img {
+  width: 100%;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  border: 2px solid white;
+}
 
-  button {
-    padding: 12px 25px;
-    border: none;
-    border-radius: 12px;
-    font-size: 16px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: all 0.2s ease-in-out;
-  }
+.buttons {
+  display: flex;
+  gap: 10px;
+}
 
-  #snap {
-    background: #ff4b2b;
-    color: #fff;
-  }
+button, label {
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  background: #00c6ff;
+  color: black;
+  text-align: center;
+}
 
-  #snap:hover {
-    background: #ff3a1a;
-  }
+button:hover, label:hover {
+  opacity: 0.85;
+}
 
-  #upload {
-    background: #1c92d2;
-    color: #fff;
-  }
+input[type="file"] {
+  display: none;
+}
 
-  #upload:hover {
-    background: #0c6aa0;
-  }
-
-  #status {
-    margin-top: 10px;
-    font-weight: bold;
-  }
+#status {
+  margin-top: 10px;
+  font-size: 14px;
+}
 </style>
 </head>
+
 <body>
+<div class="container">
+  <h1>Snap & Send</h1>
 
-<h1>Snap & Upload</h1>
+  <video id="video" autoplay playsinline></video>
+  <img id="preview" style="display:none">
 
-<video id="video" width="320" height="240" autoplay></video>
-<canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+  <div class="buttons">
+    <button id="takePhoto">📷 Take Photo</button>
+    <label for="fileInput">📁 Upload</label>
+    <input id="fileInput" type="file" accept="image/*">
+  </div>
 
-<div class="buttons">
-  <button id="snap">Take Photo</button>
-  <button id="upload">Upload Photo</button>
+  <div id="status"></div>
 </div>
 
-<div id="status"></div>
-
 <script>
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const snap = document.getElementById('snap');
-const uploadBtn = document.getElementById('upload');
-const status = document.getElementById('status');
+/* ================== CONFIG ================== */
 
-let lastPhotoData = null;
+// Choose: "discord" or "dropbox"
+const UPLOAD_TARGET = "discord";
 
-// Choose upload target: "discord" or "dropbox"
-const UPLOAD_TARGET = "discord"; // change to "dropbox" if desired
+// Discord
+const DISCORD_WEBHOOK_URL = "YOUR_DISCORD_WEBHOOK_URL";
 
-// --- Discord settings ---
-const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1435469588602290278/9bOU6n5m03UX5fBTAhEwHrYVBKxPQBzyRRc1cL0Q8HjtquhCVqKEZLZXy_CCpr_NyG4K";
-
-// --- Dropbox settings ---
+// Dropbox
 const DROPBOX_ACCESS_TOKEN = "YOUR_DROPBOX_ACCESS_TOKEN";
-const DROPBOX_PATH = "/snapshots/photo.png"; // path in Dropbox
+const DROPBOX_PATH = "/uploads/photo.png";
 
-// Access webcam
+/* ============================================ */
+
+const video = document.getElementById("video");
+const preview = document.getElementById("preview");
+const status = document.getElementById("status");
+const fileInput = document.getElementById("fileInput");
+
+// Start camera
 navigator.mediaDevices.getUserMedia({ video: true })
-  .then(stream => { video.srcObject = stream; })
-  .catch(err => {
-    status.innerText = "Error accessing webcam: " + err;
-    console.error(err);
-  });
+  .then(stream => video.srcObject = stream)
+  .catch(() => status.innerText = "Camera not available");
 
-// Take photo
-snap.addEventListener('click', () => {
-  const context = canvas.getContext('2d');
-  context.drawImage(video, 0, 0, canvas.width, canvas.height);
-  lastPhotoData = canvas.toDataURL('image/png');
-  canvas.style.display = 'block';
-  status.innerText = "Photo ready! Click 'Upload Photo'.";
-});
+// Take photo → auto send
+document.getElementById("takePhoto").onclick = () => {
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  const blob = dataURLtoBlob(canvas.toDataURL("image/png"));
+  showPreview(blob);
+  upload(blob);
+};
 
-// Upload photo
-uploadBtn.addEventListener('click', () => {
-  if(!lastPhotoData) {
-    status.innerText = "Take a photo first!";
-    return;
+// Upload from storage → auto send
+fileInput.onchange = () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  showPreview(file);
+  upload(file);
+};
+
+function showPreview(blob) {
+  preview.src = URL.createObjectURL(blob);
+  preview.style.display = "block";
+  video.style.display = "none";
+}
+
+// Upload handler
+function upload(blob) {
+  status.innerText = "Uploading...";
+
+  if (UPLOAD_TARGET === "discord") {
+    const fd = new FormData();
+    fd.append("file", blob, "image.png");
+    fd.append("content", "📸 New image");
+
+    fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      body: fd
+    })
+    .then(r => status.innerText = r.ok ? "Sent to Discord!" : "Discord upload failed")
+    .catch(() => status.innerText = "Upload error");
   }
 
-  status.innerText = "Uploading photo...";
-
-  if(UPLOAD_TARGET === "discord") {
-    // Discord webhook
-    fetch(DISCORD_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: "New photo!", embeds: [{ image: { url: lastPhotoData } }] })
-    })
-    .then(res => {
-      if(res.ok) status.innerText = "Photo uploaded to Discord!";
-      else status.innerText = "Failed to upload to Discord.";
-    })
-    .catch(err => { status.innerText = "Error: " + err; console.error(err); });
-
-  } else if(UPLOAD_TARGET === "dropbox") {
-    // Dropbox upload
-    const blob = dataURLtoBlob(lastPhotoData);
-    fetch('https://content.dropboxapi.com/2/files/upload', {
-      method: 'POST',
+  if (UPLOAD_TARGET === "dropbox") {
+    fetch("https://content.dropboxapi.com/2/files/upload", {
+      method: "POST",
       headers: {
-        'Authorization': 'Bearer ' + DROPBOX_ACCESS_TOKEN,
-        'Content-Type': 'application/octet-stream',
-        'Dropbox-API-Arg': JSON.stringify({ path: DROPBOX_PATH, mode: 'overwrite', autorename: true })
+        "Authorization": "Bearer " + DROPBOX_ACCESS_TOKEN,
+        "Dropbox-API-Arg": JSON.stringify({
+          path: DROPBOX_PATH,
+          mode: "add",
+          autorename: true
+        }),
+        "Content-Type": "application/octet-stream"
       },
       body: blob
     })
-    .then(res => {
-      if(res.ok) status.innerText = "Photo uploaded to Dropbox!";
-      else status.innerText = "Failed to upload to Dropbox.";
-    })
-    .catch(err => { status.innerText = "Error: " + err; console.error(err); });
+    .then(r => status.innerText = r.ok ? "Uploaded to Dropbox!" : "Dropbox upload failed")
+    .catch(() => status.innerText = "Upload error");
   }
-});
+}
 
-// Helper: convert dataURL to Blob for Dropbox
 function dataURLtoBlob(dataurl) {
-  let arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
-      bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
-  while(n--) u8arr[n] = bstr.charCodeAt(n);
-  return new Blob([u8arr], {type:mime});
+  const arr = dataurl.split(",");
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) u8arr[n] = bstr.charCodeAt(n);
+  return new Blob([u8arr], { type: mime });
 }
 </script>
-
 </body>
 </html>
